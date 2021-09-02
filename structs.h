@@ -225,7 +225,7 @@ struct PluginDefinition{
         void* chunk_base;
         bool* in_use;
         u64 plugin_footprint;
-    } memory;
+    } memory;   //NOTE provision for 64 plugins
     
     String plugin_name;
     String original_filename;
@@ -233,30 +233,26 @@ struct PluginDefinition{
     
     get_plugin_parameter_t get_parameters_fn;
     
+    u64 last_modified_time;
     enum {A, B} current_library;
-    render_t render_A;
-    render_t render_B;
     
     HINSTANCE library_A;
-    HINSTANCE library_B;
+    render_t render_A;
     String temp_filename_A;
-    u64 last_modified_time;
+    
+    HINSTANCE library_B;
+    render_t render_B;
+    String temp_filename_B;
 };
 
 
 static const u16 max_plugin_count = 1024;
 
 
-struct Plugin{
+struct Plugin
+{
     Rect bounds;
     u64 definition_idx; 
-    
-    String name;
-    u64 bloat_size;
-    
-    u32 inlet_count;
-    u32 outlet_count;
-    render_t render;               // TODO(octave): hard coupling entre la definition, le plugin, et l'audio node, ça va être chiant à gérer
     
     real32 *inlet_buffers;
     real32 *outlet_buffers;
@@ -265,13 +261,19 @@ struct Plugin{
     bool *outlet_connected_to_output;
 };
 
-struct Link{
+struct Link
+{
     i64 source_plugin_idx;
     i64 source_outlet_idx;
     i64 dest_plugin_idx;
     i64 dest_inlet_idx;
     
     bool operator==(const Link& other) const = default;
+};
+
+
+enum GraphInstruction{
+    Update_Topology, Update_Buffers, None
 };
 
 //~

@@ -355,6 +355,8 @@ int WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR cmdLine, int showCmd)
     u16 definition_count = 0;
     search_and_load_plugins(definitions, definition_count, plugin_name_storage); 
     
+    Pool<Plugin> plugins;
+    Pool<Link> links;
     
     IO frame_io
     {
@@ -393,7 +395,7 @@ int WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR cmdLine, int showCmd)
         if(frame_count++ % 60 == 0)
         {
             //pour l'instant on cherche pas de nouveau, juste on les update
-            swap_plugin_code_if_library_was_modified(definitions, definition_count, &frame_arena);
+            swap_plugin_code_if_library_was_modified(definitions, definition_count, &frame_arena, plugins, links, plugin_name_storage);
         }
         
         frame_io.delete_pressed = false;
@@ -517,7 +519,7 @@ int WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR cmdLine, int showCmd)
         
         frame_io.mouse_position = win32_get_mouse_position(window);
         
-        frame_io = frame(window, frame_io, graphics_ctx, &frame_arena, definitions, definition_count);
+        frame_io = frame(window, frame_io, graphics_ctx, &frame_arena, definitions, definition_count, plugins, links);
         ValidateRect(window, NULL);
         
         

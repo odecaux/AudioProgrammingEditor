@@ -105,8 +105,8 @@ MouseDownInteractionState mouse_down_interaction = {};
 Selection selected;
 
 
-Pool<Plugin> plugins;
-Pool<Link> links;
+//Pool<Plugin> plugins;
+//Pool<Link> links;
 
 
 /*
@@ -180,7 +180,6 @@ void allocate_all_memory_chunks(PluginDefinition *definitions, u16 definition_co
         definition.memory.plugin_footprint = footprint; // TODO(octave): est-ce qu'on a besoin de lui ?
         definition.memory.chunk_base = calloc(plugin_provision, footprint);
         definition.memory.in_use = (bool*)calloc(plugin_provision, sizeof(bool));
-        //in_use                   | memory                     |
     }
 }
 
@@ -192,11 +191,6 @@ Plugin create_plugin(u64 definition_idx,
 {
     Plugin new_plugin;
     new_plugin.bounds = bounds;
-    new_plugin.definition_idx = definition_idx;
-    new_plugin.bloat_size = definition.bloat_size;
-    new_plugin.inlet_count = definition.inlet_count;
-    new_plugin.outlet_count = definition.outlet_count;
-    new_plugin.render = definition.render_A;
     
     i64 memory_idx = -1;
     
@@ -223,6 +217,13 @@ Plugin create_plugin(u64 definition_idx,
     return new_plugin;
 }
 
+void deallocate_plugin_buffers(PluginDefinition& definition, Plugin plugin)
+{
+    //memory starts with inlets
+    u64 plugin_idx = ((u64)plugin.inlet_buffers - (u64)definition.memory.chunk_base) / definition.memory.plugin_footprint;
+    definition.memory.in_use[plugin_idx] = false;
+}
+
 void search_and_load_plugins(PluginDefinition* definitions,
                              u16& count,
                              StringStorage& plugin_name_storage)
@@ -239,14 +240,11 @@ void search_and_load_plugins(PluginDefinition* definitions,
         
         if (source_library != 0)
         {
-            auto get_parameters_fn =
-            (get_plugin_parameter_t)os.get_library_function(source_library, ConstString("get_plugin_parameters"));
-            auto render_ptr =
-            (render_t) os.get_library_function(source_library, ConstString("render"));
+            auto get_parameters_fn = (get_plugin_parameter_t)os.get_library_function(source_library, ConstString("get_plugin_parameters"));
+            auto render_ptr = (render_t) os.get_library_function(source_library, ConstString("render"));
             
             
-            if(get_parameters_fn &&
-               render_ptr)
+            if(get_parameters_fn && render_ptr)
             {
                 
                 PluginParameters parameters = get_parameters_fn(AudioParameters{});
@@ -275,6 +273,7 @@ void search_and_load_plugins(PluginDefinition* definitions,
                 u64 modification_time = os.get_last_modified_time(dll_filename);
                 
                 {
+                    // TODO(octave): on a le droit à combien d'allocations ?
                     auto& new_definition = definitions[count++];
                     
                     new_definition.inlet_count        = parameters.inlet_count;
@@ -296,72 +295,59 @@ void search_and_load_plugins(PluginDefinition* definitions,
     }
 }
 
-void swap_plugin_code_if_library_was_modified(PluginDefinition* plugin_descriptors,
-                                              u16 descriptor_count,
-                                              Arena* arena)
+void swap_plugin_code_if_library_was_modified(PluginDefinition* plugin_definitions,
+                                              u16 definition_count,
+                                              Arena* arena,
+                                              Pool<Plugin>& plugins, 
+                                              Pool<Link>& links,
+                                              StringStorage& plugin_name_storage)
 {
     void* arena_base = (void*)((u64)arena->base + arena->position);
-    bool *should_update_topology = (bool *)arena_push(arena, sizeof(bool) * descriptor_count);
-    bool *should_update_render = (bool *)arena_push(arena, sizeof(bool) * descriptor_count);
     
-    for(int i = 0; i < descriptor_count; i++)
+    bool *bloat_changed = (bool *)arena_push(arena, sizeof(bool) * definition_count);
+    memset(bloat_changed, false, sizeof(bool) * definition_count);
+    
+    bool *outlet_or_inlet_changed = (bool *)arena_push(arena, sizeof(bool) * definition_count);
+    memset(outlet_or_inlet_changed, false, sizeof(bool) * definition_count);
+    
+    for(int i = 0; i < definition_count; i++)
     {
-        auto& descriptor = plugin_descriptors[i];
+        auto& definition = plugin_definitions[i];
         
-        i64 modification_time = os.get_last_modified_time(descriptor.original_filename);
+        i64 modification_time = os.get_last_modified_time(definition.original_filename);
         
-        if (modification_time != descriptor.last_modified_time && modification_time != 0) // TODO(octave): vérifier
+        if (modification_time != definition.last_modified_time && modification_time != 0) // TODO(octave): vérifier
         {
             
-            os.free_library(descriptor.library_A);
+            os.free_library(definition.library_A);
             
-            if(!os.copy_file(descriptor.original_filename, descriptor.temp_filename_A, true))
+            if(!os.copy_file(definition.original_filename, definition.temp_filename_A, true))
             {
                 break;
             }
             
             
-            HINSTANCE dll = os.load_library(descriptor.temp_filename_A);
-            if (dll == nullptr)
+            HINSTANCE dll = os.load_library(definition.temp_filename_A);
+            assert(dll != nullptr);
+            
+            definition.library_A = dll;
+            definition.render_A = (render_t)os.get_library_function(dll, ConstString("render"));
+            definition.last_modified_time = modification_time;
+            
+            auto get_parameters_fn = (get_plugin_parameter_t)os.get_library_function(dll, ConstString("get_plugin_parameters"));
+            PluginParameters new_parameters = get_parameters_fn(AudioParameters{});// TODO(octave): error
+            
+            definition.plugin_name = string_storage_copy_c_string(&plugin_name_storage, new_parameters.name);
+            
+            if(new_parameters.inlet_count != definition.inlet_count ||
+               new_parameters.outlet_count != definition.outlet_count)
             {
-                assert(false); //refactor c'est pas une façon de gérer des erreurs
-                break;
+                outlet_or_inlet_changed[i] = true;
             }
-            
-            
-            descriptor.library_A = dll;
-            descriptor.render_A = (render_t)os.get_library_function(dll, ConstString("render"));
-            should_update_render[i] = true;
-            descriptor.last_modified_time = modification_time;
-            
+            if(new_parameters.bloat_size != definition.bloat_size)
             {
-                
-                auto get_parameters_fn = (get_plugin_parameter_t)os.get_library_function(dll, ConstString("get_plugin_parameters"));
-                
-                PluginParameters new_parameters = get_parameters_fn(AudioParameters{});// TODO(octave): error
-                
-                if(strcmp(new_parameters.name, descriptor.plugin_name.str) == 0 &&
-                   new_parameters.bloat_size == descriptor.bloat_size &&
-                   new_parameters.inlet_count == descriptor.inlet_count &&
-                   new_parameters.outlet_count == descriptor.outlet_count)
-                {
-                    descriptor.inlet_count = new_parameters.inlet_count;
-                    descriptor.outlet_count = new_parameters.outlet_count;
-                    descriptor.bloat_size = new_parameters.bloat_size;
-                    // TODO(octave): update name
-                    should_update_topology[i] = false;
-                }
-                else
-                {
-                    should_update_topology[i] = true;
-                }
+                bloat_changed[i] = true;
             }
-            
-        }
-        else
-        {
-            should_update_render[i] = false;
-            should_update_topology[i] = false;
         }
     }
     
@@ -371,34 +357,41 @@ void swap_plugin_code_if_library_was_modified(PluginDefinition* plugin_descripto
         
         auto& plugin = plugins.array[i];
         u64 definition_idx = plugin.definition_idx;
-        auto& definition = plugin_descriptors[definition_idx];
+        auto& definition = plugin_definitions[definition_idx];
         
-        if(should_update_render[definition_idx])
+        if(bloat_changed[definition_idx] || outlet_or_inlet_changed[definition_idx])
         {
-            plugin.render = definition.render_A;
-        }
-        if(should_update_topology[definition_idx])
-        {
-            plugin.bloat_size = definition.bloat_size;
-            plugin.inlet_count = definition.inlet_count;
-            plugin.outlet_count = definition.outlet_count;
-            plugin.name = definition.plugin_name;
-            // TODO(octave): vide les buffers, on supprime les links ou on les marque je sais pas
             // TODO(octave): on recréé le bloat!
+            //TODO on réinitialise les buffers
+        }
+    }
+    
+    
+    for(u64 i = 0; i < links.size; i++)
+    {
+        if(!links.in_use[i]) continue;
+        Link& link = links.array[i];
+        Plugin& source_plugin = plugins.array[link.source_plugin_idx];
+        Plugin& destination_plugin = plugins.array[link.dest_plugin_idx];
+        
+        if(outlet_or_inlet_changed[source_plugin.definition_idx] ||
+           outlet_or_inlet_changed[destination_plugin.definition_idx])
+        {
+            links.in_use[i] = false;
         }
     }
     arena_pop_at(arena, arena_base);
 }
 
 // TODO(octave): generer le graph linéarisé
-bool sort(Pool<Link>& links, Pool<Plugin>& nodes, Link new_link, Arena* arena)
+bool sort(Pool<Link>& links, Pool<Plugin>& plugins, Link new_link, Arena* arena)
 {
     bool is_a_dag = false;
     
     void* arena_base = (void*)((u64)arena->base + arena->position);
-    u64 node_count_in_use = nodes.count_in_use();
+    u64 plugin_count_in_use = plugins.count_in_use();
     
-    u64 *in_degree = (u64*)arena_push(arena, sizeof(u64) * nodes.size);
+    u64 *in_degree = (u64*)arena_push(arena, sizeof(u64) * plugins.size);
     for(u64  i = 0; i < links.size; i++)
     {
         if(links.in_use[i])
@@ -412,57 +405,57 @@ bool sort(Pool<Link>& links, Pool<Plugin>& nodes, Link new_link, Arena* arena)
         in_degree[new_link.dest_plugin_idx]++;
     }
     
-    u64 *empty_node_indices = (u64*)arena_push(arena, sizeof(u64) * node_count_in_use);
-    u64 empty_node_count = 0;
+    u64 *empty_plugin_indices = (u64*)arena_push(arena, sizeof(u64) * plugin_count_in_use);
+    u64 empty_plugin_count = 0;
     
-    for(u64 node_idx = 0; node_idx < nodes.size; node_idx++)
+    for(u64 plugin_idx = 0; plugin_idx < plugins.size; plugin_idx++)
     {
-        if(nodes.in_use[node_idx] && in_degree[node_idx] == 0)
+        if(plugins.in_use[plugin_idx] && in_degree[plugin_idx] == 0)
         {
-            in_degree[node_idx] = -1;
-            empty_node_indices[empty_node_count++] = node_idx;
+            in_degree[plugin_idx] = -1;
+            empty_plugin_indices[empty_plugin_count++] = plugin_idx;
         }
     }
     
-    if(empty_node_count != 0)
+    if(empty_plugin_count != 0)
     {
         
-        u64 *sorted_node_indices = (u64*)arena_push(arena, sizeof(u64) * node_count_in_use);
-        u64 sorted_node_count = 0;
-        while(empty_node_count != 0)
+        u64 *sorted_plugin_indices = (u64*)arena_push(arena, sizeof(u64) * plugin_count_in_use);
+        u64 sorted_plugin_count = 0;
+        while(empty_plugin_count != 0)
         {
-            u64 empty_node_idx = empty_node_indices[--empty_node_count];
-            sorted_node_indices[sorted_node_count++] = empty_node_idx;
+            u64 empty_plugin_idx = empty_plugin_indices[--empty_plugin_count];
+            sorted_plugin_indices[sorted_plugin_count++] = empty_plugin_idx;
             
             //NOTE c'est pas du tout efficient comme algorithme ????
             for(u64 link_idx = 0; link_idx < links.size; link_idx++)
             {
                 auto& link = links.array[link_idx];
-                if(link.source_plugin_idx == empty_node_idx)
+                if(link.source_plugin_idx == empty_plugin_idx)
                 {
-                    u64 dest_node_idx = link.dest_plugin_idx;
-                    in_degree[dest_node_idx]--;
-                    if(in_degree[dest_node_idx] == 0)
+                    u64 dest_plugin_idx = link.dest_plugin_idx;
+                    in_degree[dest_plugin_idx]--;
+                    if(in_degree[dest_plugin_idx] == 0)
                     {
-                        in_degree[dest_node_idx] = -1;
-                        empty_node_indices[empty_node_count++] = dest_node_idx;
+                        in_degree[dest_plugin_idx] = -1;
+                        empty_plugin_indices[empty_plugin_count++] = dest_plugin_idx;
                     }
                 }
             }
             
-            if(new_link.source_plugin_idx == empty_node_idx)
+            if(new_link.source_plugin_idx == empty_plugin_idx)
             {
-                u64 dest_node_idx = new_link.dest_plugin_idx;
-                in_degree[dest_node_idx]--;
-                if(in_degree[dest_node_idx] == 0)
+                u64 dest_plugin_idx = new_link.dest_plugin_idx;
+                in_degree[dest_plugin_idx]--;
+                if(in_degree[dest_plugin_idx] == 0)
                 {
-                    in_degree[dest_node_idx] = -1;
-                    empty_node_indices[empty_node_count++] = dest_node_idx;
+                    in_degree[dest_plugin_idx] = -1;
+                    empty_plugin_indices[empty_plugin_count++] = dest_plugin_idx;
                 }
             }
         }
         
-        if(sorted_node_count == node_count_in_use)
+        if(sorted_plugin_count == plugin_count_in_use)
             is_a_dag = true;
     }
     
@@ -476,7 +469,8 @@ bool sort(Pool<Link>& links, Pool<Plugin>& nodes, Link new_link, Arena* arena)
 IO frame(HWND window, 
          IO io, GraphicsContext& graphics_ctx, 
          Arena *frame_arena,
-         PluginDefinition *definitions, u64 definition_count)
+         PluginDefinition *definitions, u64 definition_count,
+         Pool<Plugin>& plugins, Pool<Link>& links)
 {
     // TODO(octave): y a un bug bizarre si je créé une messagebox, je vais pas recevoir le mouse_up event, et du coup ça flingue ma state machine, qui croit que mouse est toujours down
     
@@ -597,7 +591,11 @@ IO frame(HWND window,
                 hovered.plugin_idx = i;
             }
             
-            for(auto inlet_idx = 0; inlet_idx < plugin.inlet_count && hovered.element == HoverState::None; inlet_idx++)
+            PluginDefinition& definition = definitions[plugin.definition_idx];
+            u64 inlet_count = definition.inlet_count;
+            u64 outlet_count = definition.outlet_count;
+            
+            for(auto inlet_idx = 0; inlet_idx < inlet_count && hovered.element == HoverState::None; inlet_idx++)
             {
                 if(contains(plugin_to_inlet(plugin, inlet_idx), io.mouse_position))
                 {
@@ -607,7 +605,7 @@ IO frame(HWND window,
                 }
             }
             
-            for(auto outlet_idx = 0; outlet_idx < plugin.outlet_count && hovered.element == HoverState::None; outlet_idx++)
+            for(auto outlet_idx = 0; outlet_idx < outlet_count && hovered.element == HoverState::None; outlet_idx++)
             {
                 if(contains(plugin_to_outlet(plugin, outlet_idx), io.mouse_position))
                 {
@@ -702,6 +700,12 @@ IO frame(HWND window,
         
         auto& plugin = plugins.array[i];
         Rect& bounds = plugin.bounds;
+        
+        PluginDefinition& definition = definitions[plugin.definition_idx];
+        u64 inlet_count = definition.inlet_count;
+        u64 outlet_count = definition.outlet_count;
+        String name = definition.plugin_name;
+        
         {
             
             auto color = (selected.type == Selection::Plugin && selected.idx == i)
@@ -712,10 +716,10 @@ IO frame(HWND window,
             auto inner = shrinked(bounds, 5.0f);
             os.fill_rectangle(inner, color, graphics_ctx);
             
-            os.draw_text(plugin.name, 40, inner, Color_Dark, graphics_ctx);
+            os.draw_text(name, 40, inner, Color_Dark, graphics_ctx);
         }
         
-        for(auto inlet_idx = 0; inlet_idx < plugin.inlet_count; inlet_idx++)
+        for(auto inlet_idx = 0; inlet_idx < inlet_count; inlet_idx++)
         {
             auto color = 
                 hovered.element == HoverState::PluginInlet
@@ -732,7 +736,7 @@ IO frame(HWND window,
             }
         }
         
-        for(auto outlet_idx = 0; outlet_idx < plugin.outlet_count; outlet_idx++)
+        for(auto outlet_idx = 0; outlet_idx < outlet_count; outlet_idx++)
         {
             
             auto color = 
