@@ -1,12 +1,9 @@
 
 /*
-// TODO(octave): vérifier que les allocations se passent bien
+ TODO(octave): vérifier que les allocations se passent bien
 TODO faire des sliders 
 TODO choper la vraie taille de buffer
-TODO menu de creation de plugin
 
-TODO wrap HINSTANCE
-TODO utiliser des PluginAction
 */
 
 //#define if_failed(hr, message, ...) if(FAILED(hr)) { printf(message, __VA_ARGS__); return -1;}
@@ -472,8 +469,7 @@ bool sort(Pool<Link>& links, Pool<Plugin>& nodes, Link new_link, Arena* arena)
     
     arena_pop_at(arena, arena_base);
     return is_a_dag;
-}// TODO(octave): mettre une arena pour gérer la mémoire
-
+}
 
 
 
@@ -483,7 +479,6 @@ IO frame(HWND window,
          PluginDefinition *definitions, u64 definition_count)
 {
     // TODO(octave): y a un bug bizarre si je créé une messagebox, je vais pas recevoir le mouse_up event, et du coup ça flingue ma state machine, qui croit que mouse est toujours down
-    
     
     //io state machine
     {
@@ -709,7 +704,7 @@ IO frame(HWND window,
         Rect& bounds = plugin.bounds;
         {
             
-            auto color = (selected.type == Selection::Node && selected.idx == i)
+            auto color = (selected.type == Selection::Plugin && selected.idx == i)
                 ? Color_Green : Color_Red;
             
             os.fill_rectangle(bounds, Color_Grey, graphics_ctx);
@@ -782,7 +777,7 @@ IO frame(HWND window,
     
     //~
     //interaction overlay (the new connection for now)
-    if(mouse_down_interaction.type == MouseDownInteractionType::CreatingLink)
+    if(mouse_down_interaction.type == MouseDownInteractionState::CreatingLink)
     {
         
         if(mouse_down_interaction.clicked_pin.type == PinType::SoundCardInputOutlet)
@@ -832,7 +827,7 @@ IO frame(HWND window,
                          graphics_ctx);
         }
     }
-    else if(mouse_down_interaction.type == MouseDownInteractionType::PluginMenu)
+    else if(mouse_down_interaction.type == MouseDownInteractionState::PluginMenu)
     {
         Vec2 dim = {30.0f,40.0f};
         Vec2 origin = mouse_down_interaction.plugin_menu_origin;
@@ -859,7 +854,7 @@ IO frame(HWND window,
                 case HoverState::SoundCardInputOutlet :
                 {
                     MouseDownInteractionState new_state;
-                    new_state.type = MouseDownInteractionType::CreatingLink;
+                    new_state.type = MouseDownInteractionState::CreatingLink;
                     new_state.clicked_pin.type = PinType::SoundCardInputOutlet;
                     mouse_down_interaction = new_state;
                     
@@ -869,7 +864,7 @@ IO frame(HWND window,
                 case HoverState::SoundCardOutputInlet :
                 {
                     MouseDownInteractionState new_state;
-                    new_state.type = MouseDownInteractionType::CreatingLink;
+                    new_state.type = MouseDownInteractionState::CreatingLink;
                     new_state.clicked_pin.type = PinType::SoundCardOutputInlet;
                     mouse_down_interaction = new_state;
                     
@@ -879,7 +874,7 @@ IO frame(HWND window,
                 case HoverState::PluginInlet :
                 {
                     MouseDownInteractionState new_state;
-                    new_state.type = MouseDownInteractionType::CreatingLink;
+                    new_state.type = MouseDownInteractionState::CreatingLink;
                     new_state.clicked_pin = {
                         PinType::Inlet,
                         hovered.plugin_idx,
@@ -893,7 +888,7 @@ IO frame(HWND window,
                 case HoverState::PluginOutlet :
                 {
                     MouseDownInteractionState new_state;
-                    new_state.type = MouseDownInteractionType::CreatingLink;
+                    new_state.type = MouseDownInteractionState::CreatingLink;
                     new_state.clicked_pin = {
                         PinType::Outlet,
                         hovered.plugin_idx,
@@ -906,10 +901,10 @@ IO frame(HWND window,
                 
                 case HoverState::Link :
                 {
-                    if(mouse_down_interaction.type == MouseDownInteractionType::None)
+                    if(mouse_down_interaction.type == MouseDownInteractionState::None)
                     {
                         MouseDownInteractionState new_state;
-                        new_state.type = MouseDownInteractionType::Link;
+                        new_state.type = MouseDownInteractionState::Link;
                         new_state.clicked_link_idx = hovered.link_idx;
                         
                         mouse_down_interaction = new_state;
@@ -921,10 +916,10 @@ IO frame(HWND window,
                 case HoverState::SoundCardInput :
                 {
                     
-                    if(mouse_down_interaction.type == MouseDownInteractionType::None) // TODO(octave): ça sert à quoi ce check
+                    if(mouse_down_interaction.type == MouseDownInteractionState::None) // TODO(octave): ça sert à quoi ce check
                     {
                         MouseDownInteractionState new_state;
-                        new_state.type = MouseDownInteractionType::SoundCardInput;
+                        new_state.type = MouseDownInteractionState::SoundCardInput;
                         mouse_down_interaction = new_state;
                         
                         selected.type = Selection::SoundCardInput;
@@ -934,10 +929,10 @@ IO frame(HWND window,
                 case HoverState::SoundCardOutput :
                 {
                     
-                    if(mouse_down_interaction.type == MouseDownInteractionType::None) // TODO(octave): ça sert à quoi ce check
+                    if(mouse_down_interaction.type == MouseDownInteractionState::None) // TODO(octave): ça sert à quoi ce check
                     {
                         MouseDownInteractionState new_state;
-                        new_state.type = MouseDownInteractionType::SoundCardOutput;
+                        new_state.type = MouseDownInteractionState::SoundCardOutput;
                         mouse_down_interaction = new_state;
                         
                         selected.type = Selection::SoundCardOutput;
@@ -946,15 +941,15 @@ IO frame(HWND window,
                 
                 case HoverState::Plugin :
                 {
-                    if(mouse_down_interaction.type == MouseDownInteractionType::None)
+                    if(mouse_down_interaction.type == MouseDownInteractionState::None)
                     {
                         MouseDownInteractionState new_state;
-                        new_state.type = MouseDownInteractionType::Node;
+                        new_state.type = MouseDownInteractionState::Node;
                         new_state.clicked_plugin_idx = hovered.plugin_idx;
                         
                         mouse_down_interaction = new_state;
                         
-                        selected = {Selection::Node, hovered.plugin_idx};
+                        selected = {Selection::Plugin, hovered.plugin_idx};
                     }
                 }break;
                 
@@ -970,19 +965,19 @@ IO frame(HWND window,
         {
             if(hovered.element == HoverState::None)
             {
-                mouse_down_interaction.type = MouseDownInteractionType::PluginMenu;
+                mouse_down_interaction.type = MouseDownInteractionState::PluginMenu;
             }
         }
         
         
         switch(mouse_down_interaction.type)
         {
-            case MouseDownInteractionType::None :
+            case MouseDownInteractionState::None :
             {
                 
             }break;
             
-            case MouseDownInteractionType::CreatingLink :
+            case MouseDownInteractionState::CreatingLink :
             {
                 if(io.mouse_released)
                 {
@@ -1077,40 +1072,40 @@ IO frame(HWND window,
                             plugin.outlet_connected_to_output[outlet_idx] = true;
                         }
                     }
-                    mouse_down_interaction.type = MouseDownInteractionType::None;
+                    mouse_down_interaction.type = MouseDownInteractionState::None;
                 }
             }break;
             
-            case MouseDownInteractionType::SoundCardInput:{
+            case MouseDownInteractionState::SoundCardInput:{
                 //translate
                 soundcard_input_position.x += io.mouse_delta.x;
                 soundcard_input_position.y += io.mouse_delta.y;
                 
                 if(io.mouse_released)
-                    mouse_down_interaction.type = MouseDownInteractionType::None;
+                    mouse_down_interaction.type = MouseDownInteractionState::None;
             }break;
             
-            case MouseDownInteractionType::SoundCardOutput:{
+            case MouseDownInteractionState::SoundCardOutput:{
                 //translate
                 soundcard_output_position.x += io.mouse_delta.x;
                 soundcard_output_position.y += io.mouse_delta.y;
                 
                 if(io.mouse_released)
-                    mouse_down_interaction.type = MouseDownInteractionType::None;
+                    mouse_down_interaction.type = MouseDownInteractionState::None;
             }break;
-            case MouseDownInteractionType::Node:{
+            case MouseDownInteractionState::Node:{
                 //translate
                 plugins.array[mouse_down_interaction.clicked_plugin_idx].bounds.origin.x += io.mouse_delta.x;
                 plugins.array[mouse_down_interaction.clicked_plugin_idx].bounds.origin.y += io.mouse_delta.y;
                 
                 if(io.mouse_released)
-                    mouse_down_interaction.type = MouseDownInteractionType::None;
+                    mouse_down_interaction.type = MouseDownInteractionState::None;
             }break;
-            case MouseDownInteractionType::Link:{
+            case MouseDownInteractionState::Link:{
                 if(io.mouse_released)
-                    mouse_down_interaction.type = MouseDownInteractionType::None;
+                    mouse_down_interaction.type = MouseDownInteractionState::None;
             }break;
-            case MouseDownInteractionType::PluginMenu:{
+            case MouseDownInteractionState::PluginMenu:{
                 if(io.mouse_clicked)
                 {
                     Vec2 dim = {30.0f,40.0f};
@@ -1120,10 +1115,10 @@ IO frame(HWND window,
                     if(contains(menu_bounds,io.mouse_position))
                     {
                         printf("create plugin\n");
-                        mouse_down_interaction.type = MouseDownInteractionType::None;
+                        mouse_down_interaction.type = MouseDownInteractionState::None;
                     }
                     else 
-                        mouse_down_interaction.type = MouseDownInteractionType::None;
+                        mouse_down_interaction.type = MouseDownInteractionState::None;
                 }
             }break;
         }
@@ -1134,7 +1129,7 @@ IO frame(HWND window,
     // TODO(octave): je sais pas si c'est le bon endroit pour mettre ça, c'est à la fin de la frame, on est sûr que ça se fait dans le bon sens ?
     if(io.delete_pressed)
     {
-        if(selected.type == Selection::Node)
+        if(selected.type == Selection::Plugin)
         {
             selected.type = Selection::None;
             

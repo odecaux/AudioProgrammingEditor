@@ -27,6 +27,9 @@ typedef double real64;
 
 
 
+//~
+//Memory
+
 struct SystemArena
 {
     void *base;
@@ -36,7 +39,6 @@ struct SystemArena
     
 };
 
-
 struct Arena
 {
     void* base;
@@ -44,237 +46,12 @@ struct Arena
     u64 position;
 };
 
-
-// TODO(octave): trouver comment éviter la fragmentation comment retirer des noms.
+// TODO(octave): trouver comment éviter la fragmentation, comment retirer des noms.
 struct StringStorage
 {
     char* base;
     u64 capacity;
     char* position;
-    
-    
-    
-    /*
-char* storage_buffer
-    String* strings; //pointe vers le storage
-    bool* in_use
-    
-    remove(u64 idx)
-    {
-                    string_idx[idx] = 0
-        in_use[idx] = false
-            
-        for(string_idx)
-{
-on shift en avant le storage à droite de la string qu'on supprime
-toutes les string qui pointent à droite on les redécale vers la nouvelle position
-}
-
-        }
-            
-            
-        */
-};
-
-
-
-
-#define ConstString(text) String{(char *)text, sizeof(text)}
-
-struct String
-{
-    char* str;
-    u64 size;
-};
-
-
-enum Color
-{
-    Color_Grey,
-    Color_Red,
-    Color_Green,
-    Color_Dark
-};
-
-
-struct Vec2{
-    real32 x, y;
-};
-
-
-struct Rect{
-    Vec2 origin;
-    Vec2 dim;
-    //real32 x, y, w, h;
-};
-
-
-struct OS
-{
-    HINSTANCE (*load_library)(String) ;
-    void (*free_library)(HINSTANCE);
-    bool (*create_directory)(String);
-    void*(*get_library_function)(HINSTANCE, String);
-    u64 (*get_last_modified_time)(String);
-    bool (*copy_file)(String, String, bool) ;
-    void (*error_window)(String, String) ;
-    i64 (*init_timer)();
-    i64 (*pace_60_fps)(i64, LARGE_INTEGER, real32*);
-    void (*fill_rectangle)(Rect, Color, GraphicsContext&);
-    void (*draw_text)(const String&, i32, Rect, Color, GraphicsContext&) ;
-    void (*draw_line)(Vec2, Vec2, Color, real32, GraphicsContext&) ;
-    u64 (*enumerate_matching_filenames)(String, String*, StringStorage*);
-    void* (*reserve)(u64);
-    void (*commit)(void*, u64);
-    void (*release)(void*);
-};
-
-
-struct PluginParameters
-{
-    u32 inlet_count;
-    u32 outlet_count;
-    u64 bloat_size;
-    char name[1024] ;
-};
-
-struct AudioParameters
-{
-    float sample_rate;
-    unsigned int num_channels;
-    unsigned int num_samples;
-};
-
-
-typedef void (*render_t)(real32*, real32*, u32);
-typedef PluginParameters(*get_plugin_parameter_t)(AudioParameters);
-
-
-// TODO(octave): choper la fonction pour générer le bloat
-
-struct PluginDefinition{
-    u32 inlet_count;
-    u32 outlet_count; //le cast ça va pas se passer bizarrement ? c'est bien du u8 que ressort le dll ?
-    u64 bloat_size;
-    
-    struct 
-    {
-        u64 allocated;
-        void* chunk_base;
-        bool* in_use;
-        u64 plugin_footprint;
-    } memory;
-    
-    String plugin_name;
-    String original_filename;
-    String original_filename_without_extension;
-    
-    get_plugin_parameter_t get_parameters_fn;
-    
-    enum {A, B} current_library;
-    render_t render_A;
-    render_t render_B;
-    
-    HINSTANCE library_A;
-    HINSTANCE library_B;
-    String temp_filename_A;
-    u64 last_modified_time;
-};
-
-
-
-
-static const u16 max_plugin_count = 1024;
-
-
-
-struct Plugin{
-    Rect bounds;
-    u64 definition_idx; 
-    
-    String name;
-    u64 bloat_size;
-    
-    u32 inlet_count;
-    u32 outlet_count;
-    render_t render;
-    
-    real32 *inlet_buffers;
-    real32 *outlet_buffers;
-    void *bloat;
-    bool *inlet_connected_to_input;
-    bool *outlet_connected_to_output;
-};
-
-struct Link{
-    i64 source_plugin_idx;
-    i64 source_outlet_idx;
-    i64 dest_plugin_idx;
-    i64 dest_inlet_idx;
-    
-    bool operator==(const Link& other) const = default;
-};
-
-
-
-enum class MouseDownInteractionType
-{
-    None, 
-    Node,
-    SoundCardInput,
-    SoundCardOutput,
-    Link,
-    CreatingLink,
-    PluginMenu
-};
-
-enum class PinType
-{
-    Inlet, 
-    Outlet, 
-    SoundCardInputOutlet, 
-    SoundCardOutputInlet, 
-    None
-};
-
-struct HoverState
-{
-    enum {
-        Plugin, 
-        PluginInlet, 
-        PluginOutlet, 
-        Link, 
-        SoundCardInput, 
-        SoundCardOutput, 
-        SoundCardInputOutlet, 
-        SoundCardOutputInlet, 
-        None
-    } element = None;
-    
-    u64 plugin_idx;
-    u64 pin_idx;
-    u64 link_idx;
-};
-struct Selection{
-    enum { Node, Link, SoundCardInput, SoundCardOutput, None} type = None;
-    u64 idx;
-};
-
-
-//TODO c'est pas ça pcq y aura aussi le menu de séléction
-struct MouseDownInteractionState{
-    MouseDownInteractionType type = MouseDownInteractionType::None;
-    union
-    {
-        u64 clicked_plugin_idx;
-        u64 clicked_link_idx;
-        struct {
-            PinType type;
-            u64 plugin_idx;
-            u64 pin_idx;
-        } clicked_pin;
-        Vec2 plugin_menu_origin;
-    };
 };
 
 
@@ -333,6 +110,59 @@ struct Pool
     }
 };
 
+
+
+#define ConstString(text) String{(char *)text, sizeof(text)}
+
+struct String
+{
+    char* str;
+    u64 size;
+};
+
+//~ Primitives
+
+enum Color
+{
+    Color_Grey,
+    Color_Red,
+    Color_Green,
+    Color_Dark
+};
+
+
+struct Vec2{
+    real32 x, y;
+};
+
+
+struct Rect{
+    Vec2 origin;
+    Vec2 dim;
+};
+
+//~
+
+struct OS
+{
+    HINSTANCE (*load_library)(String) ;
+    void (*free_library)(HINSTANCE);
+    bool (*create_directory)(String);
+    void*(*get_library_function)(HINSTANCE, String);
+    u64 (*get_last_modified_time)(String);
+    bool (*copy_file)(String, String, bool) ;
+    void (*error_window)(String, String) ;
+    i64 (*init_timer)();
+    i64 (*pace_60_fps)(i64, LARGE_INTEGER, real32*);
+    void (*fill_rectangle)(Rect, Color, GraphicsContext&);
+    void (*draw_text)(const String&, i32, Rect, Color, GraphicsContext&) ;
+    void (*draw_line)(Vec2, Vec2, Color, real32, GraphicsContext&) ;
+    u64 (*enumerate_matching_filenames)(String, String*, StringStorage*);
+    void* (*reserve)(u64);
+    void (*commit)(void*, u64);
+    void (*release)(void*);
+};
+
 struct IO
 {
     real32 delta_time;
@@ -348,7 +178,6 @@ struct IO
     
     bool delete_pressed;
     
-    
     Vec2 mouse_position;
     Vec2 mouse_pos_prev;
     Vec2 mouse_delta;
@@ -358,6 +187,154 @@ struct IO
     real32 right_mouse_down_time;
     real32 mouse_clicked_time;
 };
+
+
+//~
+struct PluginParameters
+{
+    u32 inlet_count;  // TODO(octave): ça aussi y en a partout c'est chelou
+    u32 outlet_count;
+    u64 bloat_size;
+    char name[1024] ;
+};
+
+struct AudioParameters
+{
+    float sample_rate;
+    unsigned int num_channels;
+    unsigned int num_samples;
+};
+
+typedef void (*render_t)(real32*, real32*, u32);
+typedef PluginParameters(*get_plugin_parameter_t)(AudioParameters);
+
+
+// TODO(octave): choper la fonction pour générer le bloat
+
+
+//~
+//Application State
+struct PluginDefinition{
+    u32 inlet_count;
+    u32 outlet_count; 
+    u64 bloat_size;
+    
+    struct 
+    {
+        u64 allocated;
+        void* chunk_base;
+        bool* in_use;
+        u64 plugin_footprint;
+    } memory;
+    
+    String plugin_name;
+    String original_filename;
+    String original_filename_without_extension;
+    
+    get_plugin_parameter_t get_parameters_fn;
+    
+    enum {A, B} current_library;
+    render_t render_A;
+    render_t render_B;
+    
+    HINSTANCE library_A;
+    HINSTANCE library_B;
+    String temp_filename_A;
+    u64 last_modified_time;
+};
+
+
+static const u16 max_plugin_count = 1024;
+
+
+struct Plugin{
+    Rect bounds;
+    u64 definition_idx; 
+    
+    String name;
+    u64 bloat_size;
+    
+    u32 inlet_count;
+    u32 outlet_count;
+    render_t render;               // TODO(octave): hard coupling entre la definition, le plugin, et l'audio node, ça va être chiant à gérer
+    
+    real32 *inlet_buffers;
+    real32 *outlet_buffers;
+    void *bloat;
+    bool *inlet_connected_to_input;
+    bool *outlet_connected_to_output;
+};
+
+struct Link{
+    i64 source_plugin_idx;
+    i64 source_outlet_idx;
+    i64 dest_plugin_idx;
+    i64 dest_inlet_idx;
+    
+    bool operator==(const Link& other) const = default;
+};
+
+//~
+//UI
+
+enum class PinType
+{
+    Inlet, 
+    Outlet, 
+    SoundCardInputOutlet, 
+    SoundCardOutputInlet, 
+    None
+};
+
+struct HoverState
+{
+    enum {
+        Plugin, 
+        PluginInlet, 
+        PluginOutlet, 
+        Link, 
+        SoundCardInput, 
+        SoundCardOutput, 
+        SoundCardInputOutlet, 
+        SoundCardOutputInlet, 
+        None
+    } element = None;
+    
+    u64 plugin_idx;
+    u64 pin_idx;
+    u64 link_idx;
+};
+
+struct Selection{
+    enum { Plugin, Link, SoundCardInput, SoundCardOutput, None} type = None;
+    u64 idx;
+};
+
+//TODO c'est pas ça pcq y aura aussi le menu de séléction
+struct MouseDownInteractionState{
+    enum {
+        None, 
+        Node,
+        SoundCardInput,
+        SoundCardOutput,
+        Link,
+        CreatingLink,
+        PluginMenu
+    } type = None;
+    
+    union
+    {
+        u64 clicked_plugin_idx;
+        u64 clicked_link_idx;
+        struct {
+            PinType type;
+            u64 plugin_idx;
+            u64 pin_idx;
+        } clicked_pin;
+        Vec2 plugin_menu_origin;
+    };
+};
+
 
 
 #endif //STRUCTS_H
